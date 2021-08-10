@@ -1,0 +1,164 @@
+---
+title: "Analysis"
+author: "Matthew Fay"
+date: "8/9/2021"
+output: html_document
+---
+
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(lubridate)
+library(plotly)
+library(MASS)
+```
+
+
+```{r}
+df = read_csv('./data/auc_weighted.csv')
+
+```
+```{r}
+View(df)
+
+keep_columns = c('state', 'county', 'population', 'area', 'pop_dens', 'low_dif', 'mid_dif', 'high_dif', 'auc_parks', 'auc_work', 'auc_gro_pharm', 'auc_res', 'auc_transit', 'auc_driving', 'auc_walking', 'auc_public', 'auc_parks_weighted', 'auc_work_weighted', 'auc_gro_pharm_weighted', 'auc_res_weighted', 'auc_transit_weighted', 'auc_driving_weighted', 'auc_walking_weighted', 'auc_public_weighted')
+
+df2 = df[, names(df) %in% keep_columns]
+df2 = unique(df2)
+df2
+colSums(is.na(df2))
+```
+
+
+```{r}
+urban = df2[df2$pop_dens>=500,]
+rural = df2[df2$pop_dens<500,]
+
+colSums(is.na(urban))
+
+colSums(is.na(rural))
+```
+```{r}
+mulreg_urban = lm(data = urban, mid_dif ~ auc_work + auc_parks + auc_res + auc_gro_pharm + auc_transit + auc_driving + auc_walking, weights = pop_dens)
+summary(mulreg_urban)
+
+mulreg_rural = lm(data = rural, mid_dif ~ auc_work + auc_driving, weights = pop_dens)
+summary(mulreg_rural)
+```
+
+
+```{r}
+linreg = (lm(mid_dif ~ auc_work, data=urban, weights = pop_dens))
+summary(linreg)
+
+# urban %>% plot_ly() %>%
+#   add_markers(x = ~auc_work,
+#               y = ~mid_dif,
+#               text = ~n,
+#               hoverinfo = 'text',
+#               hovertext = paste(urban$county, ', ', urban$state, sep = '')) %>%
+#   layout(title = 'Cumulative Activity in Workplaces vs Home Value',
+#          xaxis = list(title = 'Cumulative activity',
+#                       zeroline = TRUE),
+#          yaxis = list(title = '% change in home value'))
+
+ggplot(urban, aes(x = auc_transit, y = mid_dif)) + geom_point(aes(color = pop_dens)) + geom_smooth(method = 'lm', color = 'red') + labs(x = 'Cumulative activity, transit stations, urban', y = 'Change in home value')
+```
+
+```{r}
+linreg = (lm(mid_dif ~ auc_work, data=rural, weights = pop_dens))
+summary(linreg)
+
+rural %>% plot_ly() %>%
+  add_markers(x = ~auc_driving,
+              y = ~mid_dif,
+              text = ~n,
+              hoverinfo = 'text',
+              hovertext = paste(rural$county, ', ', rural$state, sep = '')) %>%
+  layout(title = 'Cumulative Activity in Workplaces vs Home Value',
+         xaxis = list(title = 'Cumulative activity',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change in home value'))
+
+ggplot(rural, aes(x = auc_transit, y = mid_dif)) + geom_point(aes(color = pop_dens)) + geom_smooth(method = 'lm', color = 'red') + labs(x = 'Cumulative activity, transit stations, rural', y = 'Change in home value')
+```
+
+```{r}
+NY = df %>% filter(county == 'New York County' & state == 'New York')
+fig = plot_ly(NY, x = ~date, y = ~monthly_walking, type = 'scatter', mode = 'lines', name = 'walking') %>%
+  add_trace(y = ~monthly_public, mode = 'lines', name = 'public transit') %>% 
+  add_trace(y = ~monthly_driving, mode = 'lines', name = 'driving') %>%
+  layout(title = 'Apple Maps Activity, New York County, NY',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig
+```
+
+
+```{r}
+fig2 = plot_ly(NY, x = ~date, y = ~monthly_work, type = 'scatter', mode = 'lines', name = 'workspaces') %>%
+  add_trace(y = ~monthly_ret_rec, mode = 'lines', name = 'retail + recreation') %>%
+  add_trace(y = ~monthly_parks, mode = 'lines', name = 'parks') %>% 
+  add_trace(y = ~monthly_res, mode = 'lines', name = 'residential') %>% 
+  add_trace(y = ~monthly_transit, mode = 'lines', name = 'transit stations') %>% 
+  add_trace(y = ~monthly_gro_pharm, mode = 'lines', name = 'grocery + pharmacy') %>%
+  layout(title = 'Google Maps Activity, New York County, NY',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig2
+```
+
+```{r}
+fig3 = plot_ly(NY, x = ~date, y = ~mid_norm, type = 'scatter',  mode = 'lines', name = 'Top third') %>%
+  add_trace(y = ~high_norm, mode = 'lines', name = 'Middle third') %>% 
+  add_trace(y = ~low_norm, mode = 'lines', name = 'Bottom third') %>%
+  layout(title = 'Zillow Home Value Index, New York County, NY',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig3
+```
+
+```{r}
+Wake = df %>% filter(county == 'Wake County' & state == 'North Carolina')
+fig4 = plot_ly(Wake, x = ~date, y = ~monthly_driving, type = 'scatter', mode = 'lines', name = 'driving') %>%
+  add_trace(y = ~monthly_public, mode = 'lines', name = 'public transit') %>% 
+  add_trace(y = ~monthly_walking, mode = 'lines', name = 'walking') %>%
+  layout(title = 'Apple Maps Activity, Wake County, NC',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig4
+```
+
+```{r}
+fig5 = plot_ly(Wake, x = ~date, y = ~monthly_work, type = 'scatter', mode = 'lines', name = 'workspaces') %>%
+  add_trace(y = ~monthly_ret_rec, mode = 'lines', name = 'retail + recreation') %>%
+  add_trace(y = ~monthly_parks, mode = 'lines', name = 'parks') %>% 
+  add_trace(y = ~monthly_res, mode = 'lines', name = 'residential') %>% 
+  add_trace(y = ~monthly_transit, mode = 'lines', name = 'transit stations') %>% 
+  add_trace(y = ~monthly_gro_pharm, mode = 'lines', name = 'grocery + pharmacy') %>%
+  layout(title = 'Google Maps Activity, Wake County, NC',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig5
+```
+
+
+
+```{r}
+fig6 = plot_ly(Wake, x = ~date, y = ~mid_norm, type = 'scatter',  mode = 'lines', name = 'zhvi_mid') %>%
+  add_trace(y = ~high_norm, mode = 'lines', name = 'zhvi_high') %>% 
+  add_trace(y = ~low_norm, mode = 'lines', name = 'zhvi_low') %>%
+  layout(title = 'Zillow Home Value Index, Wake County, NC',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig6
+```

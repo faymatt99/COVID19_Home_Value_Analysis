@@ -1,0 +1,99 @@
+---
+title: "Merging"
+author: "Matthew Fay"
+date: "8/5/2021"
+output: html_document
+---
+
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(lubridate)
+
+```
+
+
+Transposing apple dataframe and date formatting:
+```{r}
+apple_wide = read_csv('./data/mobility_apple_clean2.csv')
+
+View(apple_wide)
+
+apple_long = apple_wide %>% gather(key = 'date', value = 'mobility', `1/13/2020`:`8/1/2021`)
+
+
+View(apple_long)
+
+apple_long$date = as.Date(parse_date_time(apple_long$date, c('m/d/Y')))
+
+apple_long = apple_long %>% arrange(state, county, transportation_type, date)
+
+
+View(apple_long %>% filter(county == 'Bronx County'))
+
+apple_final = apple_long  %>% pivot_wider(id_cols = c(state, county, date, transportation_type), names_from = transportation_type, values_from = mobility)
+View(apple_final)
+
+colnames(apple_final) = c('state', 'county', 'date', 'driving', 'walking', 'public')
+
+length(unique(apple_final$county))
+
+apple_weird_names = unique(apple_final$county[(str_detect(apple_final$county, ' County') == F) & (str_detect(apple_final$county, ' Parish') == F)])
+
+write_csv(apple_final, './data/apple_final.csv')
+```
+
+
+Google, format date and change colnames:
+```{r}
+
+google = read_csv('./data/google_counties.csv')
+View(google)
+
+google %>% drop(columns = )
+drops = c('country', 'census_fips_code')
+google = google[ , !(names(google) %in% drops)]
+
+colnames(google) = c('state', 'county', 'date', 'ret_rec', 'gro_pharm', 'parks', 'transit', 'work', 'res')
+
+google$date = as.Date(parse_date_time(google$date, c('Y-m-d')))
+
+(unique(google$county))
+
+google %>% filter(county == 'District of Columbia')
+
+write_csv(google, './data/google_final.csv')
+```
+
+
+Transpose zillow dataframes:
+```{r}
+low = read_csv('./data/zhvi_low_clean.csv')
+mid = read_csv('./data/zhvi_mid_clean.csv')
+high = read_csv('./data/zhvi_high_clean.csv')
+
+View(mid)
+
+drops <- c("Metro","StateCodeFIPS", 'MunicipalCodeFIPS')
+mid = mid[ , !(names(mid) %in% drops)]
+
+low = low[ , !(names(low) %in% drops)]
+
+high = high[ , !(names(high) %in% drops)]
+
+
+mid = mid %>% pivot_longer(c(`2019-01-31`:`2021-06-30`), names_to = 'date', values_to = 'zhvi_mid')
+low = low %>% pivot_longer(c(`2019-01-31`:`2021-06-30`), names_to = 'date', values_to = 'zhvi_low')
+high = high %>% pivot_longer(c(`2019-01-31`:`2021-06-30`), names_to = 'date', values_to = 'zhvi_high')
+
+zhvi = merge.data.frame(low, mid, by = intersect(names(low), names(mid)))
+zhvi = merge.data.frame(zhvi, high, by = intersect(names(zhvi), names(high)))
+
+zhvi = zhvi %>% arrange(state, county, date)
+
+write_csv(zhvi, 'zhvi_final.csv')
+```
+
