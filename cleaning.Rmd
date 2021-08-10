@@ -1,0 +1,97 @@
+---
+title: "cleaning + merging"
+author: "Matthew Fay"
+date: "8/4/2021"
+output: html_document
+---
+Importing libraries and setup:
+```{r}
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(stringr)
+
+
+```
+
+
+Apple maps dataset:
+```{r}
+apple_raw = read_csv('./data/apple_raw.csv')
+apple_county = apple_raw %>% filter(geo_type == 'county') %>% filter(`sub-region` %in% state.name) # filter for counties in continental USA
+#write.csv(apple_county, './data/apple.csv')
+unique(apple_county$`sub-region`)
+
+#rename columns
+colnames(apple_county)[5] = 'state'
+colnames(apple_county)[2] = 'county'
+
+
+#drop redundant columns
+drops = c("country","geo_type", 'alternative_name')
+mobility_apple = apple_county[ , !(names(apple_county) %in% drops)]
+View(mobility_apple)
+#write.csv(mobility_apple, './data/mobility_apple.csv')
+appl_weird_names = unique(mobility_apple$county[(str_detect(mobility_apple$county, ' County') == F) & (str_detect(mobility_apple$county, ' Parish') == F)])
+
+```
+
+
+Google full dataset:
+```{r}
+# Retail and recreation
+
+google_world = read_csv('./data/google_world.csv')
+google_usa = google_world[google_world$country_region_code == 'US',] # filter for USA
+
+google_usa = google_usa[is.na(google_usa$country_region_code) == F,] # remove empty rows
+#write.csv(google_usa, './data/google_usa.csv')
+colnames(google_usa)
+
+# change column names
+colnames(google_usa)[2] = 'country'
+colnames(google_usa)[3] = 'state'
+colnames(google_usa)[4] = 'county'
+
+# drop redundant columns
+head(google_usa)
+drops = c('country_region_code', 'metro_area', 'iso_3166_2_code', 'place_id')
+google_usa = google_usa[ , !(names(google_usa) %in% drops)]
+#write.csv(google_usa, './data/google_usa_clean.csv', row.names = F)
+View(google_usa)
+
+# make separate state/national and county csvs, potentially to look at different levels of aggregation later
+
+google_states = google_usa[(is.na(google_usa$state) | is.na(google_usa$county)),]
+#write.csv(google_states, './data/google_states.csv', row.names = F)
+google_counties = google_usa[is.na(google_usa$county) == F,]
+#write.csv(google_counties, './data/google_counties.csv', row.names = F)
+View(google_states)
+View(google_counties)
+
+
+unique(google_counties$county[(str_detect(google_counties$county, ' County') == F) & (str_detect(google_counties$county, ' Parish') == F)])
+
+(str_detect(appl_weird_names, google_counties$county))
+
+uniform_names = function(name1, name2){
+  newname = ifelse(str_detect(name1, name2), 
+          name1,
+          name2)
+  return(newname)
+
+}
+
+asdf = uniform_names(appl_weird_names, google_counties$county)
+View(asdf)
+
+unique(asdf[(str_detect(asdf, ' County') == F) & (str_detect(asdf, ' Parish') == F)])
+
+appl_weird_names
+
+
+fig = ggplot(data = mobility_apple)
+fig + geom_line(aes(x = as.date(colnames(mobility_apple)), y = ))
+
+# Couldn't figure out how to uniformize names of counties bt google and apple dfs, did it in python instead
+```

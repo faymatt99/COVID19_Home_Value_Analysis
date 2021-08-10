@@ -1,0 +1,315 @@
+---
+title: "Project"
+author: "Matthew Fay"
+date: "8/6/2021"
+output: html_document
+---
+
+
+
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(lubridate)
+library(plotly)
+```
+
+```{r}
+zhvi = read_csv('./data/zhvi_final.csv')
+google = read_csv('./data/google_final3.csv')
+apple = read_csv('./data/apple_final.csv')
+demographics = read_csv('./data/demographics.csv')
+
+?merge.data.frame()
+
+
+
+
+View(zhvi)
+View(test)
+View(test2)
+test = merge.data.frame(google, apple, by = intersect(names(google), names(apple)), all.x = T, all.y = T)
+test = merge.data.frame(test, demographics, by = intersect(names(test), names(demographics)), all.x = T, all.y = T)
+
+test$driving = test$driving-100
+test$walking = test$walking-100
+test$public = test$public-100
+
+
+fips_guide = google
+View(fips_guide)
+
+drops = c('ret_rec', 'gro_pharm', 'res', 'parks', 'work', 'transit', 'date')
+fips_guide = fips_guide[ , !(names(fips_guide) %in% drops)]
+fips_guide = unique(fips_guide)
+
+
+drops2 = c('fips', 'state_fips', 'county_fips')
+test = test[ , !(names(test) %in% drops2)]
+
+test3 = merge.data.frame(test, fips_guide, by = intersect(names(test), names(fips_guide)), all.x = TRUE, all.y = FALSE)
+
+test3 = test3 %>% arrange(state, county, date)
+
+View(demographics)
+
+test3$pop_dens = test3$population/test3$area
+
+test3$year = year(test3$date)
+test3$month = month(test3$date)
+test3$day = day(test3$date)
+
+data = test3
+
+write_csv(data, './data/apple_google_merged.csv')
+
+
+monthly_data = data %>% group_by(state, county, year, month) %>% summarise(monthly_ret_rec = mean(ret_rec, na.rm = T),
+                                                            monthly_parks = mean(parks, na.rm = T),
+                                                            monthly_work = mean(work, na.rm = T),
+                                                            monthly_res = mean(res, na.rm = T),
+                                                            monthly_gro_pharm = mean(gro_pharm, na.rm = T),
+                                                            monthly_transit = mean(transit, na.rm = T),
+                                                            monthly_driving = mean(driving, na.rm = T),
+                                                            monthly_walking = mean(walking, na.rm = T),
+                                                            monthly_public = mean(public, na.rm = T),
+                                                        
+                                                            )
+monthly_data = test = merge.data.frame(monthly_data, demographics, by = intersect(names(monthly_data), names(demographics)), all.x = T, all.y = T)
+
+monthly_data = monthly_data %>% arrange(state, county, year, month)
+write_csv(monthly_data, './data/merged_monthly.csv')
+```
+
+```{r}
+
+zhvi = zhvi %>% group_by(state, county) %>% mutate(low_norm = 100*zhvi_low/zhvi_low[date == '2020-01-31'][1L] - 100,
+                                            mid_norm = 100*zhvi_mid/zhvi_mid[date == '2020-01-31'][1L] - 100,
+                                            high_norm = 100*zhvi_high/zhvi_high[date == '2020-01-31'][1L] - 100)
+
+write_csv(zhvi, './data/zhvi_final.csv')
+
+full_monthly_merged = merge.data.frame(monthly_data, zhvi, by = intersect(names(monthly_data), names(zhvi)), all.x = T, all.y = F)
+
+View(full_monthly_merged)
+View(data)
+View(zhvi)
+
+write_csv(full_monthly_merged, './data/full_monthly_merged.csv')
+```
+
+
+
+Adding monthly AUC
+```{r}
+auc = function (val, time) {
+    auc = 0
+    for (i in 2:(length(time))) {
+        auc = auc + (time[i] - time[i - 1]) * (val[i] + val[i - 1])/2
+    }
+  return(auc)
+}
+
+as.numeric(AUC(Wake$monthly_ret_rec[2:18], Wake$date[2:18]))
+
+as.numeric(AUC(Wake$monthly_gro_pharm[2:18], Wake$date[2:18]))
+
+full_monthly_merged %>% 
+  group_by(state, county) %>%
+  mutate(auc_parks = as.numeric(AUC(monthly_parks[2:18], date[2:18])),
+         auc_work = as.numeric(AUC(monthly_work[2:18], date[2:18])),
+         auc_res = as.numeric(AUC(monthly_res[2:18], date[2:18])),
+         auc_gro_pharm = as.numeric(AUC(monthly_gro_pharm[2:18], date[2:18])),
+         auc_transit = as.numeric(AUC(monthly_transit[2:18], date[2:18])),
+         auc_driving = as.numeric(AUC(monthly_driving[2:18], date[2:18])),
+         auc_walking = as.numeric(AUC(monthly_walking[2:18], date[2:18])),
+         auc_public = as.numeric(AUC(monthly_public[2:18], date[2:18])),
+         low_dif = low_norm[18],
+         mid_dif = mid_norm[18],
+         high_dif = high_norm[18],
+         
+  ) %>%
+  ungroup() -> auc_merged
+
+View(auc_merged)
+
+auc_merged$pop_dens = auc_merged$population/auc_merged$area
+
+write_csv(auc_merged, './data/auc_merged.csv')
+
+auc_merged %>% 
+  group_by(state, county) %>%
+  mutate(auc_parks_weighted = auc_parks*pop_dens/365,
+         auc_work_weighted = auc_work *pop_dens/365,
+         auc_res_weighted = auc_res *pop_dens/365,
+         auc_gro_pharm_weighted = auc_gro_pharm *pop_dens/365,
+         auc_transit_weighted = auc_transit *pop_dens/365,
+         auc_driving_weighted = auc_driving *pop_dens/365,
+         auc_walking_weighted = auc_walking *pop_dens/365,
+         auc_public_weighted = auc_public *pop_dens/365,
+  ) %>%
+  ungroup() -> auc_weighted
+
+
+
+View(auc_weighted)
+
+
+
+
+```
+
+
+```{r}
+auc_weighted = auc_weighted[!is.na(auc_merged$year),]
+
+auc_merged %>%
+  group_by(state, county) %>%
+  summarise(across(, ~ if(sum(is.na(.)) == n()) NA else sum(is.na(.)))) -> null_by_county
+  #summarise(across(, ~ if(sum(is.na(.)) == n()) NA else sum(is.na(.)))) -> null_by_state
+  #summarise(across(, ~ if(sum(is.na(.)) == n()) NA else sum(is.na(.)))) -> null_total
+
+View(null_by_county)
+View(null_by_state)
+View(null_total)
+
+
+write_csv(auc_weighted, './data/auc_weighted.csv')
+```
+
+
+
+
+
+
+
+
+
+```{r}
+NY = auc_weighted %>% filter(county == 'New York County' & state == 'New York')
+fig = plot_ly(NY, x = ~date, y = ~monthly_driving, type = 'scatter', mode = 'lines', name = 'driving') %>%
+  add_trace(y = ~monthly_public, mode = 'lines', name = 'public transit') %>% 
+  add_trace(y = ~monthly_walking, mode = 'lines', name = 'walking') %>%
+  layout(title = 'Apple Maps Activity, Bronx County, NY',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig
+```
+
+```{r}
+fig2 = plot_ly(Bronx, x = ~date, y = ~monthly_work, type = 'scatter', mode = 'lines', name = 'workspaces') %>%
+  add_trace(y = ~monthly_ret_rec, mode = 'lines', name = 'retail + recreation') %>%
+  add_trace(y = ~monthly_parks, mode = 'lines', name = 'parks') %>% 
+  add_trace(y = ~monthly_res, mode = 'lines', name = 'residential') %>% 
+  add_trace(y = ~monthly_transit, mode = 'lines', name = 'transit stations') %>% 
+  add_trace(y = ~monthly_gro_pharm, mode = 'lines', name = 'grocery + pharmacy') %>%
+  layout(title = 'Google Maps Activity, Bronx County, NY',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig2
+```
+
+```{r}
+View(Bronx)
+fig3 = plot_ly(Bronx, x = ~date, y = ~mid_norm, type = 'scatter',  mode = 'lines', name = 'Top third') %>%
+  add_trace(y = ~high_norm, mode = 'lines', name = 'Middle third') %>% 
+  add_trace(y = ~low_norm, mode = 'lines', name = 'Bottom third') %>%
+  layout(title = 'Zillow Home Value Index, Bronx County, NY',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig3
+```
+
+
+
+
+
+```{r}
+Wake = df %>% filter(county == 'Wake County' & state == 'North Carolina')
+fig4 = plot_ly(Wake, x = ~date, y = ~monthly_driving, type = 'scatter', mode = 'lines', name = 'driving') %>%
+  add_trace(y = ~monthly_public, mode = 'lines', name = 'public transit') %>% 
+  add_trace(y = ~monthly_walking, mode = 'lines', name = 'walking') %>%
+  layout(title = 'Apple Maps Activity, Wake County, NC',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig4
+```
+
+```{r}
+fig5 = plot_ly(Wake, x = ~date, y = ~monthly_work, type = 'scatter', mode = 'lines', name = 'workspaces') %>%
+  add_trace(y = ~monthly_ret_rec, mode = 'lines', name = 'retail + recreation') %>%
+  add_trace(y = ~monthly_parks, mode = 'lines', name = 'parks') %>% 
+  add_trace(y = ~monthly_res, mode = 'lines', name = 'residential') %>% 
+  add_trace(y = ~monthly_transit, mode = 'lines', name = 'transit stations') %>% 
+  add_trace(y = ~monthly_gro_pharm, mode = 'lines', name = 'grocery + pharmacy') %>%
+  layout(title = 'Google Maps Activity, Wake County, NC',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig5
+```
+
+
+
+```{r}
+fig6 = plot_ly(Wake, x = ~date, y = ~mid_norm, type = 'scatter',  mode = 'lines', name = 'zhvi_mid') %>%
+  add_trace(y = ~high_norm, mode = 'lines', name = 'zhvi_high') %>% 
+  add_trace(y = ~low_norm, mode = 'lines', name = 'zhvi_low') %>%
+  layout(title = 'Zillow Home Value Index, Wake County, NC',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig6
+```
+
+
+
+
+```{r}
+Autauga = full_monthly_merged %>% filter(county == 'Autauga County' & state == 'Alabama')
+fig7 = plot_ly(Autauga, x = ~date, y = ~monthly_driving, type = 'scatter', mode = 'lines', name = 'driving') %>%
+  add_trace(y = ~monthly_public, mode = 'lines', name = 'public transit') %>% 
+  add_trace(y = ~monthly_walking, mode = 'lines', name = 'walking') %>%
+  layout(title = 'Apple Maps Activity, Autauga County, AL',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig7
+```
+
+
+```{r}
+fig8 = plot_ly(Autauga, x = ~date, y = ~monthly_work, type = 'scatter', mode = 'lines', name = 'workspaces') %>%
+  add_trace(y = ~monthly_ret_rec, mode = 'lines', name = 'retail + recreation') %>%
+  add_trace(y = ~monthly_parks, mode = 'lines', name = 'parks') %>% 
+  add_trace(y = ~monthly_res, mode = 'lines', name = 'residential') %>% 
+  add_trace(y = ~monthly_transit, mode = 'lines', name = 'transit stations') %>% 
+  add_trace(y = ~monthly_gro_pharm, mode = 'lines', name = 'grocery + pharmacy') %>%
+  layout(title = 'Google Maps Activity, Autauga County, AL',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig8
+```
+
+
+```{r}
+fig9 = plot_ly(Autauga, x = ~date, y = ~mid_norm, type = 'scatter',  mode = 'lines', name = 'zhvi_mid') %>%
+  add_trace(y = ~high_norm, mode = 'lines', name = 'zhvi_high') %>% 
+  add_trace(y = ~low_norm, mode = 'lines', name = 'zhvi_low') %>%
+  layout(title = 'Zillow Home Value Index, Autauga County, AL',
+         xaxis = list(title = 'Date',
+                      zeroline = TRUE),
+         yaxis = list(title = '% change, normalized to Jan 2020'))
+fig9
+
+
+
+```
